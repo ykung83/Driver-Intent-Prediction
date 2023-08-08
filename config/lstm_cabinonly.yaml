@@ -1,0 +1,6 @@
+model: lstm
+batch_size: 20
+
+num_epochs: 15
+checkpoint: None
+
