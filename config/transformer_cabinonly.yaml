@@ -1,5 +1,16 @@
-model: transformer
-batch_size: 20
+DATA_CONFIG:
+  DATA_DIR: /media/arthur/ExtremePro/public_datasets
 
-num_epochs: 15
-checkpoint: None
+MODEL: 
+  NAME: Transformer
+
+# Model Training Configs
+OPTIMIZATION:
+  BATCH_SIZE_PER_GPU: 10 # 44gb
+  NUM_EPOCHS: 30
+
+  OPTIMIZER: adam_onecycle
+  LR: 0.003
+  WEIGHT_DECAY: 0.01
+  MOMENTUM: 0.9
+
