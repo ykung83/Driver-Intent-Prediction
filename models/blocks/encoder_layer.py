@@ -1,10 +1,19 @@
+from torch.nn import MultiHeadAttention, LayerNormalization, Layer, Sequential, Dense
+
 #encoder layer
 class EncoderLayer(Layer):
-    def __init__(self, total_heads, total_dense_units, embed_dim):
+    def __init__(self, model_cfg):
         super(EncoderLayer, self).__init__()# Multihead attention layer
-        self.multihead = MultiHeadAttention(num_heads=total_heads, key_dim=embed_dim)# Feed forward network layer
-        self.nnw = Sequential([Dense(total_dense_units, activation="relu"),
-        Dense(embed_dim)])# Normalization
+        self.model_cfg      = model_cfg
+
+        encoder_cfg   = self.model_cfg['ENCODING_LAYER']
+
+        TOTAL_HEADS     = encoder_cfg['N_HEADS']
+        EMBEDDING_DIM   = self.model_cfg['EMBEDDING_LAYER']['EMBEDDING_DIM']
+        DENSE_UNITS     = encoder_cfg['DENSE_UNITS']
+
+        self.multihead = MultiHeadAttention(num_heads=TOTAL_HEADS, key_dim=EMBEDDING_DIM)# Feed forward network layer
+        self.nnw = Sequential([Dense(DENSE_UNITS, activation="relu"), Dense(EMBEDDING_DIM)])# Normalization
         self.normalize_layer = LayerNormalization()
 
     def call(self, inputs):
