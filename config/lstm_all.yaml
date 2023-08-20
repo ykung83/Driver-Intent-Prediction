@@ -1,0 +1,37 @@
+model: transformer
+
+checkpoint: None
+
+DATALOADER_CONFIG:
+  DATA_DIR: /media/arthur/ExtremePro/public_datasets/Brains4Cars
+  NUM_WORKERS: 4
+  ACTIONS: ["end_action", "lchange", "lturn", "rchange", "rturn"]
+  CAMERAS: ["road_camera", "face_camera"]
+
+MODEL_CONFIG:
+  EMBEDDING_LAYER:
+    EMBEDDING_DIM:  10
+    INPUT_SIZE:     3000
+    SEQ_LEN:        150
+  ENCODER_LAYER:
+    N_HEADS:        2
+    DENSE_UNITS:    40
+  TRANSFORMER:
+    N_CLASSES:      5
+    ENCODER_LAYERS: 6
+    DECODER_LAYERS: 6
+    INPUT_DIM:      32
+
+
+
+# Model Training Configs
+OPTIMIZATION:
+  BATCH_SIZE_PER_GPU: 20 # 44gb
+  NUM_EPOCHS: 30
+
+  OPTIMIZER: adam_onecycle
+  LR: 0.003
+  BETA1: 0.9
+  BETA2: 0.999
+  WEIGHT_DECAY: 0.01
+  MOMENTUM: 0.9
