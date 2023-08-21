@@ -23,7 +23,7 @@ class B4CDataset(Dataset):
         videos_dict = self.read_videos_by_action()        
 
         if create_dataset:
-            self.create_gt_road_labels(videos_dict)
+            # self.create_gt_road_labels(videos_dict)
             self.generate_imagesets(videos_dict)
         
         self.image_sets = {}
@@ -42,12 +42,30 @@ class B4CDataset(Dataset):
 
                 if action not in videos_dict:
                     videos_dict[action] = []
-                videos_dict[action].extend([f for f in os.listdir(action_dir) if os.path.isdir(join(action_dir, f))])
 
-        # Convert to unique video set
+                # Take the set intersection between all the cameras sequentially
+                video_action_set = set([f for f in os.listdir(action_dir) if os.path.isdir(join(action_dir, f))])
+
+                if len(videos_dict[action])==0:
+                    videos_dict[action] = video_action_set
+                else:
+                    videos_dict[action] = videos_dict[action].intersection(video_action_set)
+
+        # Convert videos_dict back to list
         for action in self.actions:
-            videos_dict[action] = list(set(videos_dict[action]))
+            videos_dict[action] = list(videos_dict[action])
 
+        # Check that files exist
+        for camera in self.cameras:
+            camera_dir = join(self.data_dir, camera+"_processed")
+
+            for action in self.actions:
+                action_dir = join(camera_dir, action)
+
+                for video_dir in videos_dict[action]:
+                    video_dir = join(action_dir, video_dir)
+                    assert os.path.exists(video_dir), f"Video directory {video_dir} does not exist."
+        print("Finished reading all valid videos by directory.")
         return videos_dict
 
     @staticmethod
@@ -64,6 +82,34 @@ class B4CDataset(Dataset):
         with open(file_path, 'w') as file:
             file.writelines(f"{item}\n" for item in data_list)
 
+    def check_data_quality(self, video_subdirs, camera):
+        """
+        Check that all videos have the same number of frames and that the number of frames is less than MAX_FRAMES.
+
+        Parameters:
+            videos_dict : dict
+                Dictionary containing the list of videos for each action.
+        """
+
+        valid_videos_mask = np.zeros(len(video_subdirs), dtype=bool)
+        for video_idx, video_subdir in enumerate(video_subdirs):
+            video_path = join(self.data_dir, video_subdir)
+            data_dict = {}
+
+            # Check that all videos have the full frame set
+            if camera=="face":
+                data_dict['gt_gazepose'] = self.get_face_labels(video_path)
+                valid_videos_mask[video_idx] = len(data_dict['gt_gazepose'])>=MAX_FRAMES-1 # gazepose has 149
+            elif camera=="road":
+                data_dict['gt_bbox'], data_dict['gt_lanes'] = self.get_road_labels(video_path)
+                valid_videos_mask[video_idx] = len(data_dict['gt_bbox'])>=MAX_FRAMES and len(data_dict['gt_lanes'])>=MAX_FRAMES
+
+            if valid_videos_mask[video_idx]==0:
+                print(f'Video {video_subdir} does not have the full frame set, skipping...')
+
+        return valid_videos_mask
+            
+
     def generate_imagesets(self, videos_dict):    
         print("Generating imagesets...")
         facecam_imageset_dict = {'train': [], 'val': [], 'test': []}
@@ -72,11 +118,18 @@ class B4CDataset(Dataset):
         for action, action_videos in videos_dict.items():
             road_cam_action_dir = join('road_camera_processed_combined', action)
             road_cam_video_labels = np.array([join(road_cam_action_dir, f) for f in action_videos])
-            road_cam_video_labels_sort_idx = np.argsort(road_cam_video_labels)
-            road_cam_video_labels = road_cam_video_labels[road_cam_video_labels_sort_idx]
+            road_cam_video_mask = self.check_data_quality(road_cam_video_labels, "road")
 
             face_cam_action_dir = join('face_camera_processed', action)
             face_cam_video_labels = np.array([join(face_cam_action_dir, f) for f in action_videos])
+            face_cam_video_mask = self.check_data_quality(face_cam_video_labels, "face")
+
+            combined_cam_video_mask = np.logical_and(road_cam_video_mask, face_cam_video_mask)
+            road_cam_video_labels = road_cam_video_labels[combined_cam_video_mask]
+            face_cam_video_labels = face_cam_video_labels[combined_cam_video_mask]
+
+            road_cam_video_labels_sort_idx = np.argsort(road_cam_video_labels)
+            road_cam_video_labels = road_cam_video_labels[road_cam_video_labels_sort_idx]
             face_cam_video_labels = face_cam_video_labels[road_cam_video_labels_sort_idx]
 
             # Ensure file order matches for road and face camera
@@ -117,12 +170,13 @@ class B4CDataset(Dataset):
             self.write_list_to_file(face_cam_split_path, facecam_imageset_dict[split_key])
 
     def __len__(self):
-        num_samples = 0
+        num_samples = 10000000
         for camera in self.cameras:
-            num_samples += len(self.image_sets[camera])
+            num_samples = min(len(self.image_sets[camera]), num_samples)
         return num_samples
     
     def collate_fn(self, data):
+        print("asdfasd", len(data))
         data_batch = [bi[0] for bi in data]
         return data_batch
 
@@ -131,6 +185,10 @@ class B4CDataset(Dataset):
         assert os.path.exists(gazepose_path), f'Label file {gazepose_path} does not exist'
         gt_gazepose = np.load(gazepose_path)
 
+        if gt_gazepose.shape[0] < MAX_FRAMES:
+            print(f'Gaze pose {gazepose_path} has less than 150 frames, padding with zeros...')
+            # Pad with zeros
+            gt_gazepose = np.pad(gt_gazepose, ((0, MAX_FRAMES-gt_gazepose.shape[0]), (0, 0)), mode='constant')
         # Assume gt_gazepose is not smaller than MAX_FRAMES
         num_frames = min(MAX_FRAMES, gt_gazepose.shape[0])
         gt_gazepose = gt_gazepose[:num_frames, :]
@@ -152,6 +210,9 @@ class B4CDataset(Dataset):
         with open(lane_file, 'rb') as f:
             gt_lanes = pickle.load(f)
 
+        gt_bbox = gt_bbox[:MAX_FRAMES]
+        gt_lanes = gt_lanes[:MAX_FRAMES]
+
         return gt_bbox, gt_lanes
 
     @staticmethod
@@ -160,7 +221,7 @@ class B4CDataset(Dataset):
         img_label_files = [f for f in os.listdir(split_video_path) if f.endswith('.pkl')]
 
         MAX_NUM_BBOXES = 5 
-        full_img_label_np = np.ones((MAX_FRAMES, MAX_NUM_BBOXES*5)) * -1
+        full_img_label_np = np.ones((MAX_FRAMES+1, MAX_NUM_BBOXES*5)) * -1
         num_img_label_files = len(img_label_files)
         for img_label_idx, img_label_file in enumerate(img_label_files):
             img_label_path = join(split_video_path, img_label_file)
@@ -264,8 +325,9 @@ class B4CDataset(Dataset):
 
         sorted_gt_np = np.empty((MAX_FRAMES, 0))
         # Stack all values from data_dict into a single np array
-        for _, items in sorted_data_dict.items():
-           sorted_gt_np = np.hstack((sorted_gt_np, items))
 
-        #  90 x [ (2) (2) (5x5) (3) ] # Pad if not enough frames 
+        for _, items in sorted_data_dict.items():
+            sorted_gt_np = np.hstack((sorted_gt_np, items))
+
+        #  150 x [ (5x5) (2) (2) (3) ] # Pad if not enough frames 
         return sorted_gt_np # obj_detections, gazepose, lane_detections # 150 x 32
