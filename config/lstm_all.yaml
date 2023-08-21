@@ -3,7 +3,7 @@ model: transformer
 checkpoint: None
 
 DATALOADER_CONFIG:
-  DATA_DIR: C:/Users/ykung/Downloads/DriverIntent/
+  DATA_DIR: C:/Users/ykung/Downloads/b4c/Brains4cars/
   NUM_WORKERS: 4
   ACTIONS: ["end_action", "lchange", "lturn", "rchange", "rturn"]
   CAMERAS: ["road_camera", "face_camera"]
