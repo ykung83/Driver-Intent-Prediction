@@ -7,6 +7,8 @@ import yaml
 import wandb
 import argparse
 
+from tqdm import tqdm
+
 # import sys
 # sys.path.append("./models")
 
@@ -44,16 +46,14 @@ def main(args):
     # criterion = nn.CrossEntropyLoss()
     # setup_seed(seed)
     # optimizer = optim.Adam(model.parameters(), lr=LR, betas=(BETA1, BETA2))
-
-
-    for idx, data in enumerate(dataset):
-        print("data", data.shape)
+    
+    # for idx, (data, action) in enumerate(dataset):
+    #     pass
 
     # Training loop
     for epoch in range(NUM_EPOCHS):
-        for batch_idx, data in enumerate(dataloader):
-            import pdb; pdb.set_trace()
-
+        for input_data, action_labels in tqdm(dataloader):
+            pass
             # optimizer.zero_grad()
             # outputs = model(data)
             # loss = criterion(outputs, targets)

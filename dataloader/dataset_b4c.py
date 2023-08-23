@@ -9,10 +9,20 @@ import numpy as np
 import pickle
 from torch.utils.data import Dataset, DataLoader
 
+from .dataset_utils import *
+
 rng = np.random.default_rng(seed=42)
 MAX_FRAMES=150
 
+
 class B4CDataset(Dataset):
+    """
+    end_action - 0
+    lchange - 1
+    lturn - 2
+    rchange - 3
+    rturn - 4
+    """
     def __init__(self, data_cfg, split="train", create_dataset=False):
         self.data_cfg   = data_cfg['DATALOADER_CONFIG']
         self.actions    = self.data_cfg['ACTIONS']
@@ -30,6 +40,7 @@ class B4CDataset(Dataset):
         for camera in self.cameras:
             imageset_path = join(self.data_dir, f'ImageSets_{camera}', f'{self.split}.txt')
             self.image_sets[camera] = [line.strip() for line in open(imageset_path, 'r')]
+        print(f'Added {len(self)} videos to the dataset.')
 
     def read_videos_by_action(self):
         videos_dict = {}
@@ -170,14 +181,17 @@ class B4CDataset(Dataset):
             self.write_list_to_file(face_cam_split_path, facecam_imageset_dict[split_key])
 
     def __len__(self):
-        num_samples = 10000000
-        for camera in self.cameras:
-            num_samples = min(len(self.image_sets[camera]), num_samples)
-        return num_samples
+        num_files = 0
+        for camera in self.cameras: 
+            assert num_files==0 or num_files==len(self.image_sets[camera]), "Number files in dataset not correct"
+            num_files=len(self.image_sets[camera])
+        return num_files
     
     def collate_fn(self, data):
-        data_batch = [bi for bi in data]
-        return data_batch
+        # print(data[0][1])
+        data_batch = [bi[0] for bi in data]
+        action_batch = [bi[1] for bi in data]
+        return data_batch, action_batch
 
     def get_face_labels(self, label_dir):  
         gazepose_path = join(label_dir, 'gazepose.npy')
@@ -185,7 +199,7 @@ class B4CDataset(Dataset):
         gt_gazepose = np.load(gazepose_path)
 
         if gt_gazepose.shape[0] < MAX_FRAMES:
-            print(f'Gaze pose {gazepose_path} has less than 150 frames, padding with zeros...')
+            # print(f'Gaze pose {gazepose_path} has less than 150 frames, padding with zeros...')
             # Pad with zeros
             gt_gazepose = np.pad(gt_gazepose, ((0, MAX_FRAMES-gt_gazepose.shape[0]), (0, 0)), mode='constant')
         # Assume gt_gazepose is not smaller than MAX_FRAMES
@@ -213,6 +227,12 @@ class B4CDataset(Dataset):
         gt_lanes = gt_lanes[:MAX_FRAMES]
 
         return gt_bbox, gt_lanes
+    
+    def get_action_label(self, video_dir):
+        action_label = video_dir.split('/')[-2]
+        assert action_label in ACTION_TO_ID_MAP.keys(), f'Action {action_label} not in action map'
+        action_id = ACTION_TO_ID_MAP[action_label]
+        return action_id
 
     @staticmethod
     def combine_img_labels(args):
@@ -308,6 +328,7 @@ class B4CDataset(Dataset):
 
     def __getitem__(self, idx):
         data_dict = {}
+        action_id=None
 
         for camera in self.cameras:
             video_subdir    = self.image_sets[camera][idx]
@@ -319,6 +340,9 @@ class B4CDataset(Dataset):
                 # Load all pickle files in the video directory
                 data_dict['gt_bbox'], data_dict['gt_lanes'] = self.get_road_labels(video_fulldir)
 
+            if action_id is None:
+                action_id = self.get_action_label(video_fulldir)
+
         # Sort dict by key so that it is is consistent
         sorted_data_dict = dict(sorted(data_dict.items(), key=lambda item: item[0]))
 
@@ -328,5 +352,6 @@ class B4CDataset(Dataset):
         for _, items in sorted_data_dict.items():
             sorted_gt_np = np.hstack((sorted_gt_np, items))
 
-        #  150 x [ (5x5) (2) (2) (3) ] # Pad if not enough frames 
-        return sorted_gt_np # obj_detections, gazepose, lane_detections # 150 x 32
+        # TOOD: Extract action label from Imageset file
+        #  150 x [ (5x5) (2) (2) (3) ] # Pad if not enough frames obj_detections, gazepose, lane_detections # 150 x 32
+        return sorted_gt_np, action_id # processed_input, action_label one hot vector 
