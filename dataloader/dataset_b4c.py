@@ -176,8 +176,7 @@ class B4CDataset(Dataset):
         return num_samples
     
     def collate_fn(self, data):
-        print("asdfasd", len(data))
-        data_batch = [bi[0] for bi in data]
+        data_batch = [bi for bi in data]
         return data_batch
 
     def get_face_labels(self, label_dir):  
