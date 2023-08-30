@@ -37,9 +37,15 @@ class B4CDataset(Dataset):
             self.generate_imagesets(videos_dict)
         
         self.image_sets = {}
+        splits_process = [self.split] if self.split in ["train", "val", "test"] else ["train", "val", "test"]
+
         for camera in self.cameras:
-            imageset_path = join(self.data_dir, f'ImageSets_{camera}', f'{self.split}.txt')
-            self.image_sets[camera] = [line.strip() for line in open(imageset_path, 'r')]
+            if camera not in self.image_sets:
+                self.image_sets[camera] = []
+
+            for curr_split in splits_process:
+                imageset_path = join(self.data_dir, f'ImageSets_{camera}', f'{curr_split}.txt')
+                self.image_sets[camera].extend([line.strip() for line in open(imageset_path, 'r')])
         print(f'Added {len(self)} videos to the dataset.')
 
     def read_videos_by_action(self):
