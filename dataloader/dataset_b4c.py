@@ -46,6 +46,13 @@ class B4CDataset(Dataset):
             for curr_split in splits_process:
                 imageset_path = join(self.data_dir, f'ImageSets_{camera}', f'{curr_split}.txt')
                 self.image_sets[camera].extend([line.strip() for line in open(imageset_path, 'r')])
+
+        # Drop nondivisible videos for fold splits from end
+        if "fold" in self.split:
+            num_folds = int(self.split.split("_")[0])
+            num_to_drop = len(self) % num_folds
+            self.image_sets = {k: v[:-num_to_drop] for k, v in self.image_sets.items()}
+
         print(f'Added {len(self)} videos to the dataset.')
 
     def read_videos_by_action(self):
@@ -82,6 +89,7 @@ class B4CDataset(Dataset):
                 for video_dir in videos_dict[action]:
                     video_dir = join(action_dir, video_dir)
                     assert os.path.exists(video_dir), f"Video directory {video_dir} does not exist."
+
         print("Finished reading all valid videos by directory.")
         return videos_dict
 
