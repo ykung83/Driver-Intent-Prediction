@@ -7,31 +7,31 @@ DATALOADER_CONFIG:
   NUM_WORKERS: 4
   ACTIONS: ["end_action", "lchange", "lturn", "rchange", "rturn"]
   CAMERAS: ["road_camera", "face_camera"]
+  # CAMERAS: ["face_camera"]
+  USE_KFOLD: False
 
 MODEL_CONFIG:
   EMBEDDING_LAYER:
-    EMBEDDING_DIM:  10
-    INPUT_SIZE:     3000
-    SEQ_LEN:        150
+    EMBEDDING_DIM:  32
   ENCODER_LAYER:
-    N_HEADS:        2
-    DENSE_UNITS:    40
+    MHA_HEADS:      2
+    HIDDEN_DIM:     8
   TRANSFORMER:
     N_CLASSES:      5
     ENCODER_LAYERS: 6
     DECODER_LAYERS: 6
-    INPUT_DIM:      32
-
-
+    MODEL_DIM:      256
+    TOKEN_DIM:      128
 
 # Model Training Configs
 OPTIMIZATION:
-  BATCH_SIZE_PER_GPU: 20 # 44gb
-  NUM_EPOCHS: 30
+  BATCH_SIZE_PER_GPU: 100 # 44gb
+  NUM_EPOCHS: 100
 
   OPTIMIZER: adam_onecycle
-  LR: 0.003
+  LR: 0.0001
   BETA1: 0.9
   BETA2: 0.999
-  WEIGHT_DECAY: 0.01
   MOMENTUM: 0.9
+  
+  DECAY_RATE: 0.99

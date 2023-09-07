@@ -23,12 +23,13 @@ class B4CDataset(Dataset):
     rchange - 3
     rturn - 4
     """
-    def __init__(self, data_cfg, split="train", create_dataset=False):
+    def __init__(self, data_cfg, split="train", create_dataset=False, normalize_inputs=False):
         self.data_cfg   = data_cfg['DATALOADER_CONFIG']
         self.actions    = self.data_cfg['ACTIONS']
         self.cameras    = self.data_cfg['CAMERAS']
         self.data_dir   = self.data_cfg['DATA_DIR']
         self.split      = split
+        self.normalize_inputs = normalize_inputs
 
         videos_dict = self.read_videos_by_action()        
 
@@ -220,6 +221,19 @@ class B4CDataset(Dataset):
         num_frames = min(MAX_FRAMES, gt_gazepose.shape[0])
         gt_gazepose = gt_gazepose[:num_frames, :]
 
+        if self.normalize_inputs:
+            MIN_GAZE, MAX_GAZE = -1500, 1500
+            MIN_POSE, MAX_POSE = -1500, 1500
+            # Truncate to these values before
+            gt_gazepose = np.clip(gt_gazepose, MIN_GAZE, MAX_GAZE)
+
+            assert np.min(gt_gazepose[:,:2])>=MIN_GAZE and np.max(gt_gazepose[:,:2])<=MAX_GAZE, f'Invalid gaze: min {np.min(gt_gazepose[:, :2])} max {np.max(gt_gazepose[:, :2])}'
+            assert np.min(gt_gazepose[:,2:])>=MIN_POSE and np.max(gt_gazepose[:,2:])<=MAX_POSE, f'Invalid pose: min {np.min(gt_gazepose[:,2:])} max {np.max(gt_gazepose[:,2:])}'
+
+            gt_gazepose[:, :2] = (gt_gazepose[:, :2] - MIN_GAZE) / (MAX_GAZE - MIN_GAZE)
+            gt_gazepose[:, 2:] = (gt_gazepose[:, 2:] - MIN_POSE) / (MAX_POSE - MIN_POSE)
+            gt_gazepose = np.clip(gt_gazepose, 0, 1)
+
         return gt_gazepose
 
     def get_road_labels(self, label_dir):
@@ -239,6 +253,22 @@ class B4CDataset(Dataset):
 
         gt_bbox = gt_bbox[:MAX_FRAMES]
         gt_lanes = gt_lanes[:MAX_FRAMES]
+
+        if self.normalize_inputs:
+            MIN_BBOX, MAX_BBOX = -1, 720
+            MIN_LANE, MAX_LANE = -1, 5
+
+            gt_bbox = np.clip(gt_bbox, MIN_BBOX, MAX_BBOX)
+            gt_lanes = np.clip(gt_lanes, MIN_LANE, MAX_LANE)
+
+            assert np.min(gt_bbox)>=MIN_BBOX and np.max(gt_bbox)<=MAX_BBOX, f'Invalid bbox: min {np.min(gt_bbox)} max {np.max(gt_bbox)}'
+            assert np.min(gt_lanes)>=MIN_LANE and np.max(gt_lanes)<=MAX_LANE, f'Invalid bbox: min {np.min(gt_lanes)} max {np.max(gt_lanes)}'
+
+            gt_bbox = (gt_bbox - MIN_BBOX) / (MAX_BBOX - MIN_BBOX)
+            gt_lanes = (gt_lanes - MIN_LANE) / (MAX_LANE - MIN_LANE)      
+
+            gt_bbox = np.clip(gt_bbox, 0, 1)  
+            gt_lanes = np.clip(gt_lanes, 0, 1)  
 
         return gt_bbox, gt_lanes
     

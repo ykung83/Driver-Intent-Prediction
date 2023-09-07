@@ -42,22 +42,15 @@ def setup_directories(save_dir, extra_tag):
 
     return run_save_dir, ckpt_save_dir
 
-def main(args):
-    cfg=None
-    with open(args.cfg_file, 'r') as file:
-        cfg = yaml.safe_load(file)
-
-    save_dir = args.save_dir
-    extra_tag = args.extra_tag
+def train_model(cfg, save_dir, extra_tag,  use_wandb=False):
     run_save_dir, ckpt_save_dir = setup_directories(save_dir, extra_tag)
-    
-    use_wandb = args.use_wandb
 
     if use_wandb:
         model_architecture = cfg['model']
         # Set up Weights & Biases
+        lr = cfg['OPTIMIZATION']['LR']
         wandb.init(project="driver-intent-learning",
-            name=f'{model_architecture}_{extra_tag}',
+            name=f'{model_architecture}_{extra_tag}_{lr}',
             config={
                 "model": model_architecture,
                 "lr": cfg['OPTIMIZATION']['LR'],
@@ -82,7 +75,8 @@ def main(args):
     # Define loss and optimizer
     criterion = nn.CrossEntropyLoss()
     setup_seed(seed)
-    optimizer = optim.Adam(model.parameters(), lr=LR, betas=(BETA1, BETA2))
+    # optimizer = optim.Adam(model.parameters(), lr=LR, betas=(BETA1, BETA2))
+    optimizer = optim.SGD(model.parameters(), lr=LR, momentum=0.9, weight_decay=1e-4)
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer, gamma=DECAY_RATE)
 
     # Initialize the DataLoader
@@ -96,32 +90,34 @@ def main(args):
         fold_datasets_list = random_split(dataset, [split_len]*5, generator=generator1)
         fold_dataloaders_list = [DataLoader(fold_dataset, collate_fn=dataset.collate_fn, batch_size=BATCH_SIZE, shuffle=True) for fold_dataset in fold_datasets_list]
     else:
-        train_dataset = B4CDataset(cfg, split="train", create_dataset=False) # Set to True to generate new dataset
-        train_dataloader = DataLoader(train_dataset, collate_fn=train_dataset.collate_fn, batch_size=BATCH_SIZE, shuffle=False)
+        train_dataset = B4CDataset(cfg, split="train", create_dataset=False, normalize_inputs=True) # Set to True to generate new dataset
+        train_dataloader = DataLoader(train_dataset, collate_fn=train_dataset.collate_fn, batch_size=BATCH_SIZE, shuffle=True)
 
-        val_dataset = B4CDataset(cfg, split="val", create_dataset=False) # Set to True to generate new dataset
+        val_dataset = B4CDataset(cfg, split="val", create_dataset=False, normalize_inputs=True) # Set to True to generate new dataset
         val_dataloader = DataLoader(val_dataset, collate_fn=val_dataset.collate_fn, batch_size=BATCH_SIZE, shuffle=False)
 
     for name, param in model.named_parameters():
         print(name)
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # Training loop
+
     running_step = 0
     for epoch in range(NUM_EPOCHS):
         model.train()
         for input_data, action_labels in tqdm(train_dataloader):
-            if running_step > 100:
-                break
             optimizer.zero_grad()
             input_data = torch.from_numpy(np.array(input_data)).float().to(device)
             batch_gt = torch.from_numpy(np.array(action_labels)).to(device, non_blocking=True)
             batch_preds = model(input_data)
-
+            # print("Action labels ", action_labels)
             # Evaluate on softmax
             loss = criterion(batch_preds, batch_gt.long())
-
             loss.backward()
             optimizer.step()
+            # print(loss.data)
+            # print(loss.grad)
+            # model.print_model_grads()
+            # import pdb; pdb.set_trace()
 
             #Train Accuracy
             with torch.no_grad():
@@ -137,7 +133,7 @@ def main(args):
             if use_wandb:
                 # Log training progress to wandb
                 wandb.log({"epoch": epoch, 
-                        "step": running_step ,
+                        "step": running_step,
                         "batch_idx": input_data[0], 
                         "loss": loss.item(),
                         "lr": lr_scheduler.get_lr()[0],
@@ -154,8 +150,6 @@ def main(args):
             num_correct = 0
             num_total = 0
             for input_data, action_labels in tqdm(val_dataloader):
-                if counter > 100:
-                    break
                 optimizer.zero_grad()
                 input_data = torch.from_numpy(np.array(input_data)).float().to(device)
                 batch_gt = torch.from_numpy(np.array(action_labels)).to(device, non_blocking=True)
@@ -164,6 +158,7 @@ def main(args):
                 loss = criterion(batch_preds, batch_gt.long())
                 running_loss += loss.item()
                 counter += input_data.shape[0]
+                print(loss.item())
 
                 # Validation Accuracy
                 max_batch_preds = torch.argmax(batch_preds, dim=-1)
@@ -182,7 +177,27 @@ def main(args):
 
     if use_wandb:
         # Finish the wandb run
-        wandb.finish()
+        wandb.finish()  
+
+def main(args):
+    cfg=None
+    with open(args.cfg_file, 'r') as file:
+        cfg = yaml.safe_load(file)
+
+    save_dir = args.save_dir
+    extra_tag = args.extra_tag
+    
+    use_wandb = args.use_wandb
+
+
+    train_model(cfg, save_dir, extra_tag, use_wandb)
+
+    # lr_search = [ 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
+    lr_search = [1e-6]
+
+    # for lr in lr_search:
+    #     cfg['OPTIMIZATION']['LR'] = lr
+    #     train_model(cfg, save_dir, extra_tag, use_wandb)
 
 if __name__ == "__main__":
     args = parser.parse_args()
